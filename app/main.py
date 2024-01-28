@@ -1,5 +1,8 @@
 from celery import Celery, Task, shared_task
+from celery.result import AsyncResult
 from flask import Flask, request
+import requests
+from bs4 import BeautifulSoup 
 
 
 def celery_init_app(app: Flask) -> Celery:
@@ -52,3 +55,53 @@ def async_send_email(email, subject, body):
     from time import sleep
     sleep(5)
     return {"success": True, "email": email, "subject": subject, "body": body}
+
+@flask_app.post("/parse_exploits")
+def parse_exploits():
+    # call the parse exploits function asynchronously
+    result = async_parse_exploits.delay()
+    # return the id of the task
+    return {"task_id": result.id}
+
+
+
+@shared_task()
+def async_parse_exploits():
+    response = requests.get("https://cve.mitre.org/data/refs/refmap/source-EXPLOIT-DB.html")
+    soup = BeautifulSoup(response.content, 'html.parser')
+
+    table = None
+    count = 0
+    
+    for child in soup.find_all('table'):
+        if len(child.find_all('tr')) > 100:
+            table = child
+
+    for row in table.find_all('tr'):
+        if count > 100: 
+            break
+
+        exploits = []
+        try:
+            # Get first td text 
+            exploit_id = row.find('td').text 
+            
+            # Get third td text
+            cve_id = row.find_all('td')[1].text.strip()
+            
+            print(f"exploit id: {exploit_id} -> {cve_id}")
+            exploits.append([exploit_id, cve_id])
+        
+        except Exception as err:
+            print(f"skipping due to: {err}")
+
+        return exploits
+
+@flask_app.get("/check_task/<task_id>")
+def check_task(task_id):
+    result = AsyncResult(task_id)
+    return {
+        "task_id": result.id, 
+        "task_status": result.status, 
+        "task_result": result.result
+    }
