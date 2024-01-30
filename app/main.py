@@ -21,7 +21,8 @@ def create_app() -> Flask:
     app = Flask("flask-queue")
     app.config.from_mapping(
         CELERY=dict(
-            broker_url="amqp://localhost:5672",
+            broker="amqp://localhost:5672",
+            result_backend='rpc',
         ),
     )
     app.config.from_prefixed_env()
@@ -62,7 +63,6 @@ def parse_exploits():
     result = async_parse_exploits.delay()
     # return the id of the task
     return {"task_id": result.id}
-
 
 
 @shared_task()
